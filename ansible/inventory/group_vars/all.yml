@@ -1,0 +1,35 @@
+---
+# Database configuration
+db_name: eboost_db
+db_user: eboost_user
+db_password: "{{ vault_db_password | default('changeme123') }}"
+
+# MQTT configuration
+mqtt_username: "{{ vault_mqtt_username | default('eboost_mqtt') }}"
+mqtt_password: "{{ vault_mqtt_password | default('changeme123') }}"
+
+# Django configuration
+django_secret_key: "{{ vault_django_secret_key | default('your-secret-key-here-change-this-in-production') }}"
+django_admin_user: "{{ vault_django_admin_user | default('admin') }}"
+django_admin_email: "{{ vault_django_admin_email | default('admin@example.com') }}"
+django_admin_password: "{{ vault_django_admin_password | default('changeme123') }}"
+
+# Security settings
+ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+ansible_host_key_checking: false
+
+# Service settings
+nginx_client_max_body_size: 10m
+gunicorn_workers: 2
+gunicorn_timeout: 30
+
+# Portainer configuration
+# Admin password will be set during first login to http://YOUR_IP:9000
+
+# Docker configuration
+docker_swarm_enabled: false
+
+# Backup settings
+backup_retention_days: 7
+backup_time_hour: 2
+backup_time_minute: 0

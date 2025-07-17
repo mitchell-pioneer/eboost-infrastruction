@@ -1,0 +1,43 @@
+#!/bin/bash
+
+# PostgreSQL backup script for {{ db_name }} database
+
+# Configuration
+DB_NAME="{{ db_name }}"
+DB_USER="{{ db_user }}"
+BACKUP_DIR="/var/backups/postgresql"
+DATE=$(date +%Y%m%d_%H%M%S)
+BACKUP_FILE="$BACKUP_DIR/${DB_NAME}_backup_${DATE}.sql"
+LOG_FILE="$BACKUP_DIR/backup.log"
+
+# Create backup directory if it doesn't exist
+mkdir -p $BACKUP_DIR
+
+# Function to log messages
+log_message() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> $LOG_FILE
+}
+
+# Start backup
+log_message "Starting backup of database $DB_NAME"
+
+# Create backup
+pg_dump -U $DB_USER -h localhost -p 5432 -W -F p -f $BACKUP_FILE $DB_NAME
+
+# Check if backup was successful
+if [ $? -eq 0 ]; then
+    log_message "Backup completed successfully: $BACKUP_FILE"
+    
+    # Compress the backup
+    gzip $BACKUP_FILE
+    log_message "Backup compressed: ${BACKUP_FILE}.gz"
+    
+    # Remove backups older than 7 days
+    find $BACKUP_DIR -name "${DB_NAME}_backup_*.sql.gz" -mtime +7 -delete
+    log_message "Old backups cleaned up"
+else
+    log_message "Backup failed for database $DB_NAME"
+    exit 1
+fi
+
+log_message "Backup process completed"

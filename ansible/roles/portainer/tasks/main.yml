@@ -1,0 +1,88 @@
+---
+# Simple Portainer deployment without Docker modules
+- name: Create Portainer data directory
+  file:
+    path: /opt/portainer/data
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: docker
+    mode: '0755'
+  become: yes
+
+- name: Create Portainer docker-compose file
+  template:
+    src: docker-compose.yml.j2
+    dest: /opt/portainer/docker-compose.yml
+    owner: "{{ ansible_user }}"
+    group: docker
+    mode: '0644'
+  become: yes
+
+- name: Create Portainer environment file
+  template:
+    src: .env.j2
+    dest: /opt/portainer/.env
+    owner: "{{ ansible_user }}"
+    group: docker
+    mode: '0600'
+  become: yes
+
+- name: Ensure Docker is running
+  systemd:
+    name: docker
+    state: started
+    enabled: yes
+  become: yes
+
+- name: Create Docker network
+  shell: docker network create eboost-network || true
+  become: yes
+
+- name: Pull Portainer image
+  shell: docker pull portainer/portainer-ce:latest
+  become: yes
+
+- name: Start Portainer with docker compose (plugin)
+  shell: |
+    cd /opt/portainer
+    docker compose down || true
+    docker compose up -d
+  become: yes
+  register: portainer_compose_result
+  ignore_errors: yes
+
+- name: Start Portainer with direct docker commands (fallback)
+  shell: |
+    # Stop existing container
+    docker stop portainer || true
+    docker rm portainer || true
+    
+    # Create volume
+    docker volume create portainer_data || true
+    
+    # Start Portainer
+    docker run -d \
+      --name portainer \
+      --restart unless-stopped \
+      -p 9000:9000 \
+      -p 9443:9443 \
+      -v /var/run/docker.sock:/var/run/docker.sock \
+      -v portainer_data:/data \
+      portainer/portainer-ce:latest
+  become: yes
+  when: portainer_compose_result.failed
+
+- name: Wait for Portainer to be ready
+  wait_for:
+    port: 9000
+    timeout: 60
+
+- name: Open firewall for Portainer
+  ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+  become: yes
+  with_items:
+    - 9000
+    - 9443

@@ -1,0 +1,46 @@
+#!/bin/bash
+
+# Portainer backup script
+
+set -e
+
+# Configuration
+BACKUP_DIR="/var/backups/portainer"
+DATE=$(date +%Y%m%d_%H%M%S)
+BACKUP_FILE="$BACKUP_DIR/portainer_backup_${DATE}.tar.gz"
+LOG_FILE="$BACKUP_DIR/backup.log"
+
+# Create backup directory if it doesn't exist
+mkdir -p $BACKUP_DIR
+
+# Function to log messages
+log_message() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> $LOG_FILE
+}
+
+# Start backup
+log_message "Starting Portainer backup"
+
+# Stop Portainer temporarily
+cd /opt/portainer
+docker-compose down
+
+# Create backup
+tar -czf $BACKUP_FILE -C /opt/portainer data/
+
+# Restart Portainer
+docker-compose up -d
+
+# Check if backup was successful
+if [ $? -eq 0 ]; then
+    log_message "Backup completed successfully: $BACKUP_FILE"
+    
+    # Remove backups older than 30 days
+    find $BACKUP_DIR -name "portainer_backup_*.tar.gz" -mtime +30 -delete
+    log_message "Old backups cleaned up"
+else
+    log_message "Backup failed"
+    exit 1
+fi
+
+log_message "Backup process completed"

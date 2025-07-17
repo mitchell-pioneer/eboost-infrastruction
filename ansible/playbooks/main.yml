@@ -1,0 +1,109 @@
+---
+- name: Deploy EBoost Infrastructure
+  hosts: all
+  become: yes
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+  vars_files:
+    - ../inventory/group_vars/all.yml
+  
+  pre_tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+    
+    - name: Install base packages
+      apt:
+        name:
+          - ufw
+          - htop
+          - curl
+          - wget
+          - vim
+          - git
+          - unzip
+        state: present
+    
+    - name: Configure UFW defaults
+      ufw:
+        direction: "{{ item.direction }}"
+        policy: "{{ item.policy }}"
+      with_items:
+        - { direction: 'incoming', policy: 'deny' }
+        - { direction: 'outgoing', policy: 'allow' }
+    
+    - name: Allow SSH through firewall
+      ufw:
+        rule: allow
+        port: 22
+        proto: tcp
+    
+    - name: Enable UFW
+      ufw:
+        state: enabled
+    
+    - name: Create log directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      with_items:
+        - /var/log/gunicorn
+        - /var/log/supervisor
+
+  roles:
+    - postgresql
+    - mosquitto
+    - docker
+    - portainer
+    - django
+  
+  post_tasks:
+    - name: Ensure all services are running
+      systemd:
+        name: "{{ item }}"
+        state: started
+        enabled: yes
+      with_items:
+        - postgresql
+        - mosquitto
+        - docker
+        - portainer
+        - nginx
+        - supervisor
+    
+    - name: Wait for services to be ready
+      wait_for:
+        port: "{{ item }}"
+        timeout: 30
+      with_items:
+        - 5432  # PostgreSQL
+        - 1883  # Mosquitto
+        - 9000  # Portainer
+        - 80    # Nginx
+    
+    - name: Display service status
+      command: systemctl status {{ item }}
+      register: service_status
+      with_items:
+        - postgresql
+        - mosquitto
+        - docker
+        - portainer
+        - nginx
+        - supervisor
+      failed_when: false
+    
+    - name: Show deployment summary
+      debug:
+        msg:
+          - "EBoost Infrastructure Deployment Complete!"
+          - "PostgreSQL: Running on port 5432"
+          - "Mosquitto MQTT: Running on port 1883"
+          - "Portainer: http://{{ ansible_host }}:9000/"
+          - "Django Admin: http://{{ ansible_host }}/admin/"
+          - "Django App: http://{{ ansible_host }}/"
+          - "Admin User: {{ django_admin_user }}"
+          - "Admin Password: {{ django_admin_password }}"
+          - "Portainer: Set password on first login"

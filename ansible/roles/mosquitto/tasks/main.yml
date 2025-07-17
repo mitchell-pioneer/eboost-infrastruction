@@ -1,0 +1,151 @@
+---
+- name: Update apt cache
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+  become: yes
+
+- name: Install mosquitto and mosquitto-clients
+  apt:
+    name:
+      - mosquitto
+      - mosquitto-clients
+    state: present
+  become: yes
+
+- name: Create mosquitto configuration directory
+  file:
+    path: /etc/mosquitto/conf.d
+    state: directory
+    owner: mosquitto
+    group: mosquitto
+    mode: '0755'
+  become: yes
+
+- name: Create mosquitto password file
+  file:
+    path: /etc/mosquitto/passwd
+    state: touch
+    owner: mosquitto
+    group: mosquitto
+    mode: '0600'
+  become: yes
+
+- name: Add mosquitto user
+  shell: |
+    mosquitto_passwd -b /etc/mosquitto/passwd {{ mqtt_username }} {{ mqtt_password }}
+  become: yes
+  notify: restart mosquitto
+
+- name: Create mosquitto ACL file
+  file:
+    path: /etc/mosquitto/acl.conf
+    state: touch
+    owner: mosquitto
+    group: mosquitto
+    mode: '0644'
+  become: yes
+
+- name: Configure basic ACL rules
+  lineinfile:
+    path: /etc/mosquitto/acl.conf
+    line: "user {{ mqtt_username }}"
+    create: yes
+    owner: mosquitto
+    group: mosquitto
+    mode: '0644'
+  become: yes
+
+- name: Add topic access for user
+  lineinfile:
+    path: /etc/mosquitto/acl.conf
+    line: "topic readwrite #"
+    insertafter: "user {{ mqtt_username }}"
+    create: yes
+    owner: mosquitto
+    group: mosquitto
+    mode: '0644'
+  become: yes
+
+- name: Configure mosquitto
+  template:
+    src: mosquitto.conf.j2
+    dest: /etc/mosquitto/mosquitto.conf
+    owner: mosquitto
+    group: mosquitto
+    mode: '0644'
+  become: yes
+  notify: restart mosquitto
+
+- name: Check Mosquitto configuration syntax
+  shell: |
+    mosquitto -c /etc/mosquitto/mosquitto.conf -t
+  register: mosquitto_config_check
+  become: yes
+  ignore_errors: yes
+
+- name: Display Mosquitto config check result
+  debug:
+    var: mosquitto_config_check
+
+- name: Create mosquitto log directory
+  file:
+    path: /var/log/mosquitto
+    state: directory
+    owner: mosquitto
+    group: mosquitto
+    mode: '0755'
+  become: yes
+
+- name: Start and enable mosquitto service
+  systemd:
+    name: mosquitto
+    state: started
+    enabled: yes
+    daemon_reload: yes
+  become: yes
+  register: mosquitto_service_result
+  ignore_errors: yes
+
+- name: Check Mosquitto service status if start failed
+  shell: |
+    echo "=== Mosquitto Service Status ==="
+    systemctl status mosquitto
+    echo "=== Mosquitto Logs ==="
+    journalctl -xeu mosquitto.service -n 20
+  register: mosquitto_debug
+  become: yes
+  when: mosquitto_service_result.failed
+
+- name: Display Mosquitto debug info
+  debug:
+    var: mosquitto_debug.stdout_lines
+  when: mosquitto_service_result.failed
+
+- name: Use simpler Mosquitto configuration if main config failed
+  template:
+    src: mosquitto-simple.conf.j2
+    dest: /etc/mosquitto/mosquitto.conf
+    owner: mosquitto
+    group: mosquitto
+    mode: '0644'
+  become: yes
+  when: mosquitto_service_result.failed
+
+- name: Try to restart Mosquitto if initial start failed
+  systemd:
+    name: mosquitto
+    state: restarted
+    daemon_reload: yes
+  become: yes
+  when: mosquitto_service_result.failed
+
+- name: Open firewall for MQTT ports
+  ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+  become: yes
+  with_items:
+    - 1883
+    - 8883

@@ -1,0 +1,15 @@
+---
+- name: restart mosquitto
+  systemd:
+    name: mosquitto
+    state: restarted
+    daemon_reload: yes
+  become: yes
+  ignore_errors: yes
+
+- name: reload mosquitto
+  systemd:
+    name: mosquitto
+    state: reloaded
+  become: yes
+  ignore_errors: yes

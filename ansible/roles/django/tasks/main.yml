@@ -1,0 +1,163 @@
+---
+# WSL-compatible Django setup without become_user issues
+- name: Update apt cache
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+  become: yes
+
+- name: Install system dependencies
+  apt:
+    name:
+      - python3
+      - python3-pip
+      - python3-venv
+      - python3-dev
+      - build-essential
+      - libpq-dev
+      - nginx
+      - supervisor
+      - git
+    state: present
+  become: yes
+
+- name: Create django user
+  user:
+    name: django
+    system: yes
+    shell: /bin/bash
+    home: /home/django
+    create_home: yes
+  become: yes
+
+- name: Create django project directory
+  file:
+    path: /var/www/django
+    state: directory
+    owner: django
+    group: django
+    mode: '0755'
+  become: yes
+
+- name: Create virtual environment
+  shell: |
+    sudo -u django python3 -m venv /var/www/django/venv
+  become: yes
+  args:
+    creates: /var/www/django/venv/bin/activate
+
+- name: Install Django and dependencies
+  shell: |
+    sudo -u django /var/www/django/venv/bin/pip install Django==4.2 psycopg2-binary gunicorn paho-mqtt python-decouple whitenoise
+  become: yes
+
+- name: Create Django project
+  shell: |
+    sudo -u django /var/www/django/venv/bin/django-admin startproject eboost /var/www/django/
+  become: yes
+  args:
+    creates: /var/www/django/manage.py
+
+- name: Create Django settings template
+  template:
+    src: settings.py.j2
+    dest: /var/www/django/eboost/settings.py
+    owner: django
+    group: django
+    mode: '0644'
+  become: yes
+  notify: restart django
+
+- name: Create Django environment file
+  template:
+    src: .env.j2
+    dest: /var/www/django/.env
+    owner: django
+    group: django
+    mode: '0600'
+  become: yes
+
+- name: Run Django migrations
+  shell: |
+    cd /var/www/django && sudo -u django /var/www/django/venv/bin/python manage.py migrate
+  become: yes
+
+- name: Create Django superuser
+  shell: |
+    cd /var/www/django && sudo -u django /var/www/django/venv/bin/python manage.py shell -c "from django.contrib.auth.models import User; User.objects.create_superuser('{{ django_admin_user }}', '{{ django_admin_email }}', '{{ django_admin_password }}') if not User.objects.filter(username='{{ django_admin_user }}').exists() else None"
+  become: yes
+
+- name: Collect static files
+  shell: |
+    cd /var/www/django && sudo -u django /var/www/django/venv/bin/python manage.py collectstatic --noinput
+  become: yes
+
+- name: Create gunicorn configuration
+  template:
+    src: gunicorn.conf.py.j2
+    dest: /var/www/django/gunicorn.conf.py
+    owner: django
+    group: django
+    mode: '0644'
+  become: yes
+  notify: restart django
+
+- name: Create supervisor configuration for Django
+  template:
+    src: django.supervisor.conf.j2
+    dest: /etc/supervisor/conf.d/django.conf
+    owner: root
+    group: root
+    mode: '0644'
+  become: yes
+  notify: restart supervisor
+
+- name: Create nginx configuration for Django
+  template:
+    src: django.nginx.conf.j2
+    dest: /etc/nginx/sites-available/django
+    owner: root
+    group: root
+    mode: '0644'
+  become: yes
+  notify: restart nginx
+
+- name: Enable nginx site
+  file:
+    src: /etc/nginx/sites-available/django
+    dest: /etc/nginx/sites-enabled/django
+    state: link
+  become: yes
+  notify: restart nginx
+
+- name: Remove default nginx site
+  file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  become: yes
+  notify: restart nginx
+
+- name: Start and enable nginx
+  systemd:
+    name: nginx
+    state: started
+    enabled: yes
+  become: yes
+
+- name: Start and enable supervisor
+  systemd:
+    name: supervisor
+    state: started
+    enabled: yes
+  become: yes
+
+- name: Open firewall for HTTP and HTTPS
+  ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+  become: yes
+  with_items:
+    - 80
+    - 443
+    - 8000

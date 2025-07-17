@@ -1,0 +1,36 @@
+---
+- name: Create custom Docker application directory
+  file:
+    path: /opt/custom-app
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: docker
+    mode: '0755'
+  become: yes
+
+- name: Copy Docker script to server
+  copy:
+    src: "{{ docker_script_path }}"
+    dest: /opt/custom-app/docker-script.sh
+    owner: "{{ ansible_user }}"
+    group: docker
+    mode: '0755'
+  become: yes
+  when: docker_script_path is defined
+
+- name: Copy docker-compose file to server
+  copy:
+    src: "{{ docker_compose_path }}"
+    dest: /opt/custom-app/docker-compose.yml
+    owner: "{{ ansible_user }}"
+    group: docker
+    mode: '0644'
+  become: yes
+  when: docker_compose_path is defined
+
+- name: Run Docker script
+  shell: |
+    cd /opt/custom-app
+    ./docker-script.sh
+  become: yes
+  when: docker_script_path is defined

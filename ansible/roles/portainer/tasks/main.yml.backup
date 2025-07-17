@@ -1,0 +1,114 @@
+---
+- name: Create Portainer data directory
+  file:
+    path: /opt/portainer/data
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: docker
+    mode: '0755'
+  become: yes
+
+- name: Create Portainer docker-compose file
+  template:
+    src: docker-compose.yml.j2
+    dest: /opt/portainer/docker-compose.yml
+    owner: "{{ ansible_user }}"
+    group: docker
+    mode: '0644'
+  become: yes
+
+- name: Create Portainer environment file
+  template:
+    src: .env.j2
+    dest: /opt/portainer/.env
+    owner: "{{ ansible_user }}"
+    group: docker
+    mode: '0600'
+  become: yes
+
+- name: Ensure Docker is running
+  systemd:
+    name: docker
+    state: started
+    enabled: yes
+  become: yes
+
+- name: Pull Portainer image
+  docker_image:
+    name: portainer/portainer-ce:latest
+    source: pull
+  become: yes
+  ignore_errors: yes
+
+- name: Pull Portainer image (fallback)
+  shell: docker pull portainer/portainer-ce:latest
+  become: yes
+  ignore_errors: yes
+
+- name: Start Portainer using docker-compose
+  docker_compose_v2:
+    project_src: /opt/portainer
+    state: present
+    pull: "always"
+  become: yes
+  ignore_errors: yes
+  register: portainer_compose_result
+
+- name: Start Portainer using docker-compose (fallback)
+  shell: |
+    cd /opt/portainer
+    docker-compose up -d
+  become: yes
+  when: portainer_compose_result.failed
+
+- name: Wait for Portainer to be ready
+  wait_for:
+    port: 9000
+    timeout: 60
+
+- name: Create Portainer systemd service
+  template:
+    src: portainer.service.j2
+    dest: /etc/systemd/system/portainer.service
+    owner: root
+    group: root
+    mode: '0644'
+  become: yes
+  notify: reload systemd
+
+- name: Enable and start Portainer service
+  systemd:
+    name: portainer
+    state: started
+    enabled: yes
+    daemon_reload: yes
+  become: yes
+
+- name: Open firewall for Portainer
+  ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+  become: yes
+  with_items:
+    - 9000
+    - 9443
+
+- name: Create Portainer backup script
+  template:
+    src: backup_portainer.sh.j2
+    dest: /usr/local/bin/backup_portainer.sh
+    owner: root
+    group: root
+    mode: '0755'
+  become: yes
+
+- name: Setup Portainer backup cron job
+  cron:
+    name: "Weekly Portainer backup"
+    minute: "0"
+    hour: "3"
+    weekday: "0"
+    job: "/usr/local/bin/backup_portainer.sh"
+    user: root
+  become: yes

@@ -1,0 +1,16 @@
+{
+  "log-driver": "json-file",
+  "log-opts": {
+    "max-size": "10m",
+    "max-file": "3"
+  },
+  "storage-driver": "overlay2",
+  "dns": ["8.8.8.8", "8.8.4.4"],
+  "live-restore": true,
+  "userland-proxy": false,
+  "experimental": false,
+  "metrics-addr": "0.0.0.0:9323",
+  "features": {
+    "buildkit": true
+  }
+}

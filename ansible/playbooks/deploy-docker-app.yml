@@ -1,0 +1,59 @@
+---
+- name: Deploy Custom Docker Application
+  hosts: all
+  become: yes
+  vars:
+    app_name: "custom-app"
+    app_directory: "/opt/{{ app_name }}"
+  
+  tasks:
+    - name: Create application directory
+      file:
+        path: "{{ app_directory }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: docker
+        mode: '0755'
+
+    - name: Copy Docker script
+      copy:
+        src: "../files/{{ docker_script_name }}"
+        dest: "{{ app_directory }}/deploy.sh"
+        owner: "{{ ansible_user }}"
+        group: docker
+        mode: '0755'
+      when: docker_script_name is defined
+
+    - name: Copy docker-compose file
+      copy:
+        src: "../files/docker-compose.yml"
+        dest: "{{ app_directory }}/docker-compose.yml"
+        owner: "{{ ansible_user }}"
+        group: docker
+        mode: '0644'
+      when: docker_compose_file is defined
+
+    - name: Copy application files
+      copy:
+        src: "{{ item }}"
+        dest: "{{ app_directory }}/"
+        owner: "{{ ansible_user }}"
+        group: docker
+        mode: '0644'
+      with_fileglob:
+        - "../files/*"
+      when: copy_all_files | default(false)
+
+    - name: Run deployment script
+      shell: |
+        cd {{ app_directory }}
+        ./deploy.sh
+      become_user: "{{ ansible_user }}"
+      when: docker_script_name is defined
+
+    - name: Start docker-compose services
+      shell: |
+        cd {{ app_directory }}
+        docker compose up -d
+      become_user: "{{ ansible_user }}"
+      when: docker_compose_file is defined

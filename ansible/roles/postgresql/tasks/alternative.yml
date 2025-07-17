@@ -1,0 +1,61 @@
+---
+# Alternative PostgreSQL setup using Docker
+- name: Update apt cache
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+  become: yes
+
+- name: Ensure Docker is running
+  systemd:
+    name: docker
+    state: started
+    enabled: yes
+  become: yes
+
+- name: Create PostgreSQL data directory
+  file:
+    path: /opt/postgresql/data
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: docker
+    mode: '0755'
+  become: yes
+
+- name: Create PostgreSQL docker-compose file
+  template:
+    src: postgres-docker-compose.yml.j2
+    dest: /opt/postgresql/docker-compose.yml
+    owner: "{{ ansible_user }}"
+    group: docker
+    mode: '0644'
+  become: yes
+
+- name: Start PostgreSQL container
+  shell: |
+    cd /opt/postgresql
+    docker compose down || true
+    docker compose up -d
+  become: yes
+
+- name: Wait for PostgreSQL to be ready
+  wait_for:
+    port: 5432
+    timeout: 60
+
+- name: Create database user
+  shell: |
+    docker exec -i $(docker ps -q -f name=postgres) psql -U postgres -c "SELECT 1 FROM pg_user WHERE usename = '{{ db_user }}'" | grep -q 1 || \
+    docker exec -i $(docker ps -q -f name=postgres) psql -U postgres -c "CREATE USER {{ db_user }} WITH PASSWORD '{{ db_password }}';"
+  become: yes
+
+- name: Create database
+  shell: |
+    docker exec -i $(docker ps -q -f name=postgres) psql -U postgres -c "SELECT 1 FROM pg_database WHERE datname = '{{ db_name }}'" | grep -q 1 || \
+    docker exec -i $(docker ps -q -f name=postgres) createdb -U postgres -O {{ db_user }} {{ db_name }}
+  become: yes
+
+- name: Grant database privileges
+  shell: |
+    docker exec -i $(docker ps -q -f name=postgres) psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE {{ db_name }} TO {{ db_user }};"
+  become: yes

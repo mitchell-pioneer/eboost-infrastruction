@@ -1,0 +1,133 @@
+---
+- name: Update apt cache
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+  become: yes
+
+- name: Install required packages for Docker
+  apt:
+    name:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - gnupg
+      - lsb-release
+    state: present
+  become: yes
+
+- name: Add Docker's official GPG key
+  apt_key:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    state: present
+  become: yes
+
+- name: Add Docker repository
+  apt_repository:
+    repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+    state: present
+  become: yes
+
+- name: Update apt cache after adding Docker repository
+  apt:
+    update_cache: yes
+  become: yes
+
+- name: Install Docker CE
+  apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-compose-plugin
+      - python3-pip
+    state: present
+  become: yes
+
+- name: Remove problematic docker-compose pip package
+  pip:
+    name: docker-compose
+    state: absent
+    executable: pip3
+  become: yes
+  ignore_errors: yes
+
+- name: Install Docker SDK for Python
+  pip:
+    name:
+      - docker>=5.0.0
+    executable: pip3
+  become: yes
+
+- name: Start and enable Docker service
+  systemd:
+    name: docker
+    state: started
+    enabled: yes
+    daemon_reload: yes
+  become: yes
+
+- name: Add current user to docker group
+  user:
+    name: "{{ ansible_user }}"
+    groups: docker
+    append: yes
+  become: yes
+
+- name: Create docker compose directory
+  file:
+    path: /opt/docker-compose
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: docker
+    mode: '0755'
+  become: yes
+
+- name: Create docker network for applications
+  docker_network:
+    name: eboost-network
+  become: yes
+
+# Docker Compose plugin is installed with docker-compose-plugin package
+
+- name: Configure Docker daemon
+  template:
+    src: daemon.json.j2
+    dest: /etc/docker/daemon.json
+    owner: root
+    group: root
+    mode: '0644'
+  become: yes
+  notify: restart docker
+
+- name: Configure Docker log rotation
+  template:
+    src: docker.logrotate.j2
+    dest: /etc/logrotate.d/docker
+    owner: root
+    group: root
+    mode: '0644'
+  become: yes
+
+- name: Open firewall for Docker Swarm (if needed)
+  ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+  become: yes
+  with_items:
+    - 2376
+    - 2377
+    - 7946
+  when: docker_swarm_enabled | default(false)
+
+- name: Open firewall for Docker Swarm UDP (if needed)
+  ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: udp
+  become: yes
+  with_items:
+    - 4789
+    - 7946
+  when: docker_swarm_enabled | default(false)

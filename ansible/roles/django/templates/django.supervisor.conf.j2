@@ -1,0 +1,10 @@
+[program:django]
+command=/var/www/django/venv/bin/gunicorn -c /var/www/django/gunicorn.conf.py eboost.wsgi:application
+directory=/var/www/django
+user=django
+autostart=true
+autorestart=true
+redirect_stderr=true
+stdout_logfile=/var/log/supervisor/django.log
+stderr_logfile=/var/log/supervisor/django_error.log
+environment=PATH="/var/www/django/venv/bin"

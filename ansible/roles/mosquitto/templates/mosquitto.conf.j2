@@ -1,0 +1,32 @@
+# Mosquitto configuration file
+
+# General settings
+pid_file /var/run/mosquitto.pid
+persistence true
+persistence_location /var/lib/mosquitto/
+
+# Logging
+log_dest file /var/log/mosquitto/mosquitto.log
+log_type error
+log_type warning
+log_type notice
+log_type information
+log_timestamp true
+
+# Security
+allow_anonymous false
+password_file /etc/mosquitto/passwd
+
+# Network
+listener 1883
+protocol mqtt
+
+# SSL/TLS listener (optional)
+# listener 8883
+# protocol mqtt
+# cafile /etc/ssl/certs/ca-certificates.crt
+# certfile /etc/ssl/certs/server.crt
+# keyfile /etc/ssl/private/server.key
+
+# Access control
+acl_file /etc/mosquitto/acl.conf

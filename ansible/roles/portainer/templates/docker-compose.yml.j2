@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+      - "9443:9443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    # Portainer will prompt for admin password on first run
+    networks:
+      - eboost-network
+    labels:
+      - "com.eboost.description=Portainer Docker Management"
+      - "com.eboost.service=portainer"
+
+volumes:
+  portainer_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/portainer/data
+
+networks:
+  eboost-network:
+    external: true

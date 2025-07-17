@@ -1,0 +1,13 @@
+/var/log/postgresql/*.log {
+    weekly
+    missingok
+    rotate 52
+    compress
+    delaycompress
+    notifempty
+    create 640 postgres postgres
+    sharedscripts
+    postrotate
+        /usr/bin/pg_ctlcluster 14 main reload > /dev/null 2>&1 || true
+    endscript
+}
